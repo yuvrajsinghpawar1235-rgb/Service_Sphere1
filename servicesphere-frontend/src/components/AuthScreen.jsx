@@ -9,6 +9,16 @@ const FALLBACK_DEPARTMENTS = [
   { id: 5, name: 'Sales & Customer Success' },
 ];
 
+const DEMO_PASSWORD = 'pass123';
+
+const DEMO_ROLES = [
+  { label: 'Employee', email: 'employee@servicesphere.com', password: DEMO_PASSWORD },
+  { label: 'Support Agent', email: 'agent@servicesphere.com', password: DEMO_PASSWORD },
+  { label: 'Support Manager', email: 'manager@servicesphere.com', password: DEMO_PASSWORD },
+  { label: 'Asset Manager', email: 'assetmanager@servicesphere.com', password: DEMO_PASSWORD },
+  { label: 'Administrator', email: 'admin@servicesphere.com', password: DEMO_PASSWORD },
+];
+
 export default function AuthScreen({ onAuthenticated }) {
   const [mode, setMode] = useState('login'); // 'login' | 'register'
 
@@ -17,6 +27,7 @@ export default function AuthScreen({ onAuthenticated }) {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
+  const [activeDemoEmail, setActiveDemoEmail] = useState('');
 
   // Create Account state
   const [fullName, setFullName] = useState('');
@@ -58,28 +69,37 @@ export default function AuthScreen({ onAuthenticated }) {
     setRegSuccess('');
   };
 
+  const performLogin = async (email, password, demoEmail = '') => {
+    setLoginError('');
+    setLoginLoading(true);
+    setActiveDemoEmail(demoEmail);
+
+    try {
+      const userData = await loginUser({ email, password });
+      onAuthenticated?.(userData);
+    } catch (err) {
+      setLoginError(err.message || 'Unable to sign in. Please check your credentials.');
+    } finally {
+      setLoginLoading(false);
+      setActiveDemoEmail('');
+    }
+  };
+
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
-    setLoginError('');
-
     const trimmedEmail = loginEmail.trim().toLowerCase();
     if (!trimmedEmail || !loginPassword) {
       setLoginError('Please enter both your email address and password.');
       return;
     }
 
-    setLoginLoading(true);
-    try {
-      const userData = await loginUser({
-        email: trimmedEmail,
-        password: loginPassword,
-      });
-      onAuthenticated?.(userData);
-    } catch (err) {
-      setLoginError(err.message || 'Unable to sign in. Please check your credentials.');
-    } finally {
-      setLoginLoading(false);
-    }
+    await performLogin(trimmedEmail, loginPassword);
+  };
+
+  const handleDemoLogin = async (role) => {
+    setLoginEmail(role.email);
+    setLoginPassword(role.password);
+    await performLogin(role.email, role.password, role.email);
   };
 
   const handleRegisterSubmit = async (e) => {
@@ -201,6 +221,7 @@ export default function AuthScreen({ onAuthenticated }) {
                 value={loginEmail}
                 onChange={(e) => setLoginEmail(e.target.value)}
                 placeholder="you@company.com"
+                className="auth-input"
                 style={styles.input}
                 autoComplete="email"
               />
@@ -216,6 +237,7 @@ export default function AuthScreen({ onAuthenticated }) {
                 value={loginPassword}
                 onChange={(e) => setLoginPassword(e.target.value)}
                 placeholder="Enter your password"
+                className="auth-input"
                 style={styles.input}
                 autoComplete="current-password"
               />
@@ -229,8 +251,35 @@ export default function AuthScreen({ onAuthenticated }) {
                 ...(loginLoading ? styles.disabledBtn : {}),
               }}
             >
-              {loginLoading ? 'Signing In...' : 'Sign In'}
+              {loginLoading && !activeDemoEmail ? 'Signing In...' : 'Sign In'}
             </button>
+
+            <div style={styles.demoSection}>
+              <div style={styles.demoHeader}>
+                <span style={styles.demoTitle}>Direct Demo Access</span>
+                <span style={styles.demoHint}>Password: {DEMO_PASSWORD}</span>
+              </div>
+              <div style={styles.demoGrid}>
+                {DEMO_ROLES.map((role) => {
+                  const isCurrentDemo = loginLoading && activeDemoEmail === role.email;
+                  return (
+                    <button
+                      key={role.email}
+                      type="button"
+                      disabled={loginLoading}
+                      onClick={() => handleDemoLogin(role)}
+                      style={{
+                        ...styles.demoBtn,
+                        ...(loginLoading ? styles.disabledBtn : {}),
+                      }}
+                      title={`${role.email} / ${role.password}`}
+                    >
+                      {isCurrentDemo ? 'Logging in...' : role.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             <p style={styles.footerText}>
               New to ServiceSphere?{' '}
@@ -261,6 +310,7 @@ export default function AuthScreen({ onAuthenticated }) {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Enter your full name"
+                className="auth-input"
                 style={styles.input}
                 autoComplete="name"
               />
@@ -276,6 +326,7 @@ export default function AuthScreen({ onAuthenticated }) {
                 value={regEmail}
                 onChange={(e) => setRegEmail(e.target.value)}
                 placeholder="you@company.com"
+                className="auth-input"
                 style={styles.input}
                 autoComplete="email"
               />
@@ -289,6 +340,7 @@ export default function AuthScreen({ onAuthenticated }) {
                 id="reg-department"
                 value={departmentId}
                 onChange={(e) => setDepartmentId(e.target.value)}
+                className="auth-input"
                 style={styles.input}
               >
                 <option value="">-- Select Department (Optional) --</option>
@@ -310,6 +362,7 @@ export default function AuthScreen({ onAuthenticated }) {
                 value={regPassword}
                 onChange={(e) => setRegPassword(e.target.value)}
                 placeholder="At least 6 characters"
+                className="auth-input"
                 style={styles.input}
                 autoComplete="new-password"
               />
@@ -325,6 +378,7 @@ export default function AuthScreen({ onAuthenticated }) {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Re-enter your password"
+                className="auth-input"
                 style={styles.input}
                 autoComplete="new-password"
               />
@@ -473,6 +527,47 @@ const styles = {
     fontWeight: 600,
     fontSize: '14px',
     cursor: 'pointer',
+  },
+  demoSection: {
+    marginTop: '4px',
+    paddingTop: '14px',
+    borderTop: '1px solid #334155',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+  },
+  demoHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  demoTitle: {
+    fontSize: '12px',
+    fontWeight: 700,
+    color: '#cbd5e1',
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+  },
+  demoHint: {
+    fontSize: '12px',
+    color: '#94a3b8',
+  },
+  demoGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: '8px',
+  },
+  demoBtn: {
+    padding: '8px 10px',
+    borderRadius: '8px',
+    border: '1px solid #475569',
+    backgroundColor: '#0f172a',
+    color: '#e2e8f0',
+    fontSize: '12px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    textAlign: 'center',
   },
   disabledBtn: {
     opacity: 0.65,
