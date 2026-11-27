@@ -8,7 +8,16 @@ const handleRequest = async (apiCall) => {
         const response = await apiCall();
         return response.data;
     } catch (error) {
-        const message = error.response?.data?.error || error.response?.data?.message || error.message;
+        const data = error.response?.data;
+        let message = data?.error || data?.message || error.message;
+
+        if (data?.fieldErrors && typeof data.fieldErrors === 'object') {
+            const details = Object.values(data.fieldErrors).filter(Boolean).join(', ');
+            if (details) {
+                message = `${message}: ${details}`;
+            }
+        }
+
         throw new Error(message);
     }
 };

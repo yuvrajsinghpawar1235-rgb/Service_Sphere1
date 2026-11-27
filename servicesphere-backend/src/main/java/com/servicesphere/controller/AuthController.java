@@ -29,11 +29,13 @@ public class AuthController {
     private String hashPassword(String password) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] encodedhash = digest.digest(password.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hexString = new StringBuilder();
-            for (byte b : encodedhash) {
+            byte[] encodedHash = digest.digest(password.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hexString = new StringBuilder(2 * encodedHash.length);
+            for (byte b : encodedHash) {
                 String hex = Integer.toHexString(0xff & b);
-                if (hex.length() == 1) hexString.append('0');
+                if (hex.length() == 1) {
+                    hexString.append('0');
+                }
                 hexString.append(hex);
             }
             return hexString.toString();
@@ -55,10 +57,10 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody Map<String, String> credentials) {
-        String email = credentials.get("email");
-        String rawPassword = credentials.get("password");
+        String email = credentials != null ? credentials.get("email") : null;
+        String rawPassword = credentials != null ? credentials.get("password") : null;
 
-        if (email == null || email.trim().isEmpty() || rawPassword == null) {
+        if (email == null || email.trim().isEmpty() || rawPassword == null || rawPassword.isEmpty()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("error", "Email and password are required"));
         }
@@ -76,14 +78,18 @@ public class AuthController {
 
         User user = userOpt.get();
 
+        if ("DISABLED".equalsIgnoreCase(user.getStatus())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Account is disabled. Please contact an administrator."));
+        }
+
         String hashedPassword = hashPassword(rawPassword);
-        boolean passwordValid = (user.getPasswordHash() != null && user.getPasswordHash().equals(hashedPassword)) ||
-                (user.getPasswordHash() != null && user.getPasswordHash().equals(rawPassword)) ||
-                rawPassword.equals("pass123");
+        boolean passwordValid = user.getPasswordHash() != null
+                && (user.getPasswordHash().equals(hashedPassword) || user.getPasswordHash().equals(rawPassword));
 
         if (!passwordValid) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of("error", "Invalid credentials"));
+                    .body(Map.of("error", "Invalid email or password"));
         }
 
         return ResponseEntity.ok(Map.of(
@@ -106,6 +112,11 @@ public class AuthController {
         String email = request.normalizedEmail();
         String rawPassword = request.effectivePassword();
 
+        if (fullName.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", "Full name is required"));
+        }
+
         if (email.isEmpty()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("error", "Email is required"));
@@ -116,12 +127,13 @@ public class AuthController {
                     .body(Map.of("error", "A valid email address is required"));
         }
 
-        if (fullName.isEmpty()) {
+        if (rawPassword == null || rawPassword.trim().length() < 6) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("error", "Full name is required"));
+                    .body(Map.of("error", "Password must be at least 6 characters"));
         }
 
-        if (userRepository.findByEmail(email).isPresent()) {
+        if (userRepository.findByEmail(email).isPresent()
+                || (request.email() != null && userRepository.findByEmail(request.email().trim()).isPresent())) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("error", "Email is already registered"));
         }
@@ -141,11 +153,7 @@ public class AuthController {
             newUser.setDepartmentId(request.departmentId());
         }
 
-        if (rawPassword != null && !rawPassword.trim().isEmpty()) {
-            newUser.setPasswordHash(hashPassword(rawPassword.trim()));
-        } else {
-            newUser.setPasswordHash(hashPassword("pass123"));
-        }
+        newUser.setPasswordHash(hashPassword(rawPassword.trim()));
 
         User savedUser = userRepository.save(newUser);
 
