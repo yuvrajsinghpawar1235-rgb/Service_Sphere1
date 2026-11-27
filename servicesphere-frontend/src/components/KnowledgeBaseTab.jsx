@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
-import { createKnowledgeArticle } from '../services/api';
+import {
+  createKnowledgeArticle,
+  updateKnowledgeArticle,
+  updateKnowledgeArticleStatus,
+} from '../services/api';
 
 const CATEGORIES = ['General', 'Hardware', 'Software', 'Network', 'Account/Access', 'Security'];
-const STATUSES = ['PUBLISHED', 'DRAFT'];
+const STATUSES = ['PUBLISHED', 'DRAFT', 'ARCHIVED'];
 
 const KnowledgeBaseTab = ({ articles = [], user = null, onArticleCreated }) => {
   const [query, setQuery] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [editingArticleId, setEditingArticleId] = useState(null);
 
   const [title, setTitle] = useState('');
   const [summary, setSummary] = useState('');
@@ -16,10 +21,11 @@ const KnowledgeBaseTab = ({ articles = [], user = null, onArticleCreated }) => {
   const [status, setStatus] = useState('PUBLISHED');
 
   const [submitting, setSubmitting] = useState(false);
+  const [statusUpdatingId, setStatusUpdatingId] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  const canCreateArticle = !user || (user.roleId != null && Number(user.roleId) !== 1);
+  const canManageArticles = !user || (user.roleId != null && Number(user.roleId) !== 1);
 
   const filtered = articles.filter((a) => {
     const q = query.toLowerCase();
@@ -31,7 +37,30 @@ const KnowledgeBaseTab = ({ articles = [], user = null, onArticleCreated }) => {
     );
   });
 
-  const handleCreateSubmit = async (e) => {
+  const resetForm = () => {
+    setEditingArticleId(null);
+    setTitle('');
+    setSummary('');
+    setBody('');
+    setTags('');
+    setCategory('General');
+    setStatus('PUBLISHED');
+  };
+
+  const startEditArticle = (art) => {
+    setErrorMsg('');
+    setSuccessMsg('');
+    setEditingArticleId(art.id);
+    setTitle(art.title || '');
+    setSummary(art.summary || '');
+    setBody(art.body || art.content || '');
+    setCategory(art.category || 'General');
+    setTags(art.tags || '');
+    setStatus(art.status || 'PUBLISHED');
+    setShowCreateForm(true);
+  };
+
+  const handleFormSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
@@ -56,39 +85,62 @@ const KnowledgeBaseTab = ({ articles = [], user = null, onArticleCreated }) => {
 
     setSubmitting(true);
     try {
-      await createKnowledgeArticle(payload, user?.roleId ?? 2);
-      setTitle('');
-      setSummary('');
-      setBody('');
-      setTags('');
-      setCategory('General');
-      setStatus('PUBLISHED');
+      if (editingArticleId != null) {
+        await updateKnowledgeArticle(editingArticleId, payload, user?.roleId ?? 2);
+        setSuccessMsg('Knowledge base article updated.');
+      } else {
+        await createKnowledgeArticle(payload, user?.roleId ?? 2);
+        setSuccessMsg('Knowledge base article saved.');
+      }
+      resetForm();
       setShowCreateForm(false);
-      setSuccessMsg('Knowledge base article saved.');
       if (onArticleCreated) {
         await onArticleCreated();
       }
     } catch (err) {
-      setErrorMsg(err.message || 'Could not create knowledge base article.');
+      setErrorMsg(err.message || 'Could not save knowledge base article.');
     } finally {
       setSubmitting(false);
     }
   };
 
+  const handleStatusChange = async (articleId, nextStatus) => {
+    setErrorMsg('');
+    setSuccessMsg('');
+    setStatusUpdatingId(articleId);
+    try {
+      await updateKnowledgeArticleStatus(articleId, nextStatus, user?.roleId ?? 2);
+      setSuccessMsg(`Article status updated to ${nextStatus}.`);
+      if (onArticleCreated) {
+        await onArticleCreated();
+      }
+    } catch (err) {
+      setErrorMsg(err.message || 'Could not update article status.');
+    } finally {
+      setStatusUpdatingId(null);
+    }
+  };
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: '24px' }}>
-      {/* Left Column: Search, Create Form & Quick Guidelines */}
+      {/* Left Column: Search, Create/Edit Form & Quick Guidelines */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: 'fit-content' }}>
         <div style={{ background: 'white', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', gap: '8px' }}>
             <h3 style={{ margin: 0, color: '#1e293b', fontSize: '18px' }}>Knowledge Search</h3>
-            {canCreateArticle && (
+            {canManageArticles && (
               <button
                 type="button"
                 onClick={() => {
-                  setShowCreateForm((prev) => !prev);
                   setErrorMsg('');
                   setSuccessMsg('');
+                  if (showCreateForm) {
+                    resetForm();
+                    setShowCreateForm(false);
+                  } else {
+                    resetForm();
+                    setShowCreateForm(true);
+                  }
                 }}
                 style={{
                   background: '#2563eb',
@@ -120,8 +172,12 @@ const KnowledgeBaseTab = ({ articles = [], user = null, onArticleCreated }) => {
             </div>
           )}
 
-          {showCreateForm && canCreateArticle && (
-            <form onSubmit={handleCreateSubmit} style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {showCreateForm && canManageArticles && (
+            <form onSubmit={handleFormSubmit} style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b' }}>
+                {editingArticleId != null ? `Editing Article #${editingArticleId}` : 'Create New Article'}
+              </div>
+
               {errorMsg && (
                 <div style={{ padding: '10px 12px', borderRadius: '8px', background: '#fef2f2', color: '#b91c1c', fontSize: '12px', fontWeight: '600' }}>
                   {errorMsg}
@@ -184,23 +240,52 @@ const KnowledgeBaseTab = ({ articles = [], user = null, onArticleCreated }) => {
                 style={{ padding: '10px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px' }}
               />
 
-              <button
-                type="submit"
-                disabled={submitting}
-                style={{
-                  background: '#2563eb',
-                  color: 'white',
-                  border: 'none',
-                  padding: '10px 14px',
-                  borderRadius: '8px',
-                  fontSize: '13px',
-                  fontWeight: '700',
-                  cursor: submitting ? 'not-allowed' : 'pointer',
-                  opacity: submitting ? 0.7 : 1,
-                }}
-              >
-                {submitting ? 'Saving...' : 'Publish Article'}
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  style={{
+                    flex: 1,
+                    background: '#2563eb',
+                    color: 'white',
+                    border: 'none',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: '700',
+                    cursor: submitting ? 'not-allowed' : 'pointer',
+                    opacity: submitting ? 0.7 : 1,
+                  }}
+                >
+                  {submitting
+                    ? 'Saving...'
+                    : editingArticleId != null
+                      ? 'Update Article'
+                      : 'Publish Article'}
+                </button>
+
+                {editingArticleId != null && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetForm();
+                      setShowCreateForm(false);
+                    }}
+                    style={{
+                      background: '#f1f5f9',
+                      color: '#334155',
+                      border: '1px solid #cbd5e1',
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
             </form>
           )}
 
@@ -240,9 +325,52 @@ const KnowledgeBaseTab = ({ articles = [], user = null, onArticleCreated }) => {
                 <p style={{ margin: '0 0 12px 0', color: '#64748b', fontSize: '13px', lineHeight: '1.5' }}>
                   {art.body || art.content || art.summary}
                 </p>
-                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '10px', borderTop: '1px solid #f1f5f9', fontSize: '12px', color: '#64748b' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid #f1f5f9', fontSize: '12px', color: '#64748b', gap: '8px' }}>
                   <span>{art.author ? `By ${art.author}` : ''}</span>
-                  <span style={{ color: '#2563eb', fontWeight: '600' }}>{art.status || 'PUBLISHED'}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    {canManageArticles ? (
+                      <>
+                        <select
+                          aria-label={`Status for ${art.title}`}
+                          value={art.status || 'PUBLISHED'}
+                          disabled={statusUpdatingId === art.id}
+                          onChange={(e) => handleStatusChange(art.id, e.target.value)}
+                          style={{
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            background: 'white',
+                            color: '#1e293b',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {STATUSES.map((st) => (
+                            <option key={st} value={st}>{st}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => startEditArticle(art)}
+                          style={{
+                            background: '#eff6ff',
+                            color: '#2563eb',
+                            border: '1px solid #bfdbfe',
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Edit
+                        </button>
+                      </>
+                    ) : (
+                      <span style={{ color: '#2563eb', fontWeight: '600' }}>{art.status || 'PUBLISHED'}</span>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}

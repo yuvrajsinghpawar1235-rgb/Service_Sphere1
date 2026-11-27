@@ -50,6 +50,12 @@ export const updateAssetStatus = (id, status) => handleRequest(() => axios.patch
 
 // --- Knowledge Base ---
 export const getKnowledgeArticles = (params) => handleRequest(() => axios.get(`${API_BASE_URL}/kb`, { params }));
+export const createKnowledgeArticle = (articleData, roleId) =>
+    handleRequest(() => axios.post(`${API_BASE_URL}/kb`, articleData, { params: { roleId } }));
+export const updateKnowledgeArticle = (id, articleData, roleId) =>
+    handleRequest(() => axios.put(`${API_BASE_URL}/kb/${id}`, articleData, { params: { roleId } }));
+export const updateKnowledgeArticleStatus = (id, status, roleId) =>
+    handleRequest(() => axios.patch(`${API_BASE_URL}/kb/${id}/status`, null, { params: { status, roleId } }));
 
 // --- Live Reports ---
 export const reportService = {
