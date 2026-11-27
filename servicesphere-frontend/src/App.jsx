@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  loginUser,
   getTickets,
   createTicket,
   updateTicketStatus,
@@ -13,6 +12,7 @@ import {
   reportService
 } from './services/api';
 
+import AuthScreen from './components/AuthScreen';
 import Navbar from './components/Navbar';
 import MetricCard from './components/MetricCard';
 import FilterPills from './components/FilterPills';
@@ -23,9 +23,6 @@ import './App.css';
 
 function App() {
   const [user, setUser] = useState(null);
-  const [loginEmail, setLoginEmail] = useState('admin@servicesphere.com');
-  const [loginPassword, setLoginPassword] = useState('pass123');
-  const [loginError, setLoginError] = useState('');
 
   const [activeTab, setActiveTab] = useState('tickets');
   const [tickets, setTickets] = useState([]);
@@ -49,29 +46,6 @@ function App() {
       loadData();
     }
   }, [user]);
-
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setLoginError('');
-    try {
-      let roleName = 'EMPLOYEE';
-      if (loginEmail.includes('agent')) roleName = 'SUPPORT AGENT';
-      else if (loginEmail.includes('manager')) roleName = 'SUPPORT LEAD / MANAGER';
-      else if (loginEmail.includes('assetmgr')) roleName = 'IT ASSET MANAGER';
-      else if (loginEmail.includes('admin')) roleName = 'ADMINISTRATOR';
-
-      const userData = await loginUser({ email: loginEmail, password: loginPassword }).catch(() => ({
-        id: 1,
-        fullName: loginEmail.split('@')[0].toUpperCase(),
-        email: loginEmail,
-        role: roleName,
-        roleId: loginEmail.includes('admin') ? 5 : 1
-      }));
-      setUser(userData);
-    } catch (err) {
-      setLoginError('Login failed. Please check your credentials.');
-    }
-  };
 
   const loadData = async () => {
     try {
@@ -183,52 +157,25 @@ function App() {
     }
   };
 
+  const handleLogout = () => {
+    setUser(null);
+    setSelectedTicket(null);
+    setActiveTab('tickets');
+  };
+
   if (!user) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f8fafc', padding: '20px' }}>
-        <div style={{ background: 'white', padding: '40px', borderRadius: '12px', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.05)', width: '100%', maxWidth: '420px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
-          <h2 style={{ color: '#2563eb', margin: '0 0 8px 0', fontSize: '24px', fontWeight: '800' }}>ServiceSphere</h2>
-          <p style={{ color: '#64748b', marginBottom: '24px', fontSize: '14px' }}>Enterprise IT Service Management Platform</p>
-
-          {loginError && <p style={{ color: '#dc2626', fontSize: '13px', marginBottom: '16px', background: '#fee2e2', padding: '8px', borderRadius: '6px' }}>{loginError}</p>}
-
-          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left' }}>
-            <div>
-              <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Select Demo User Account / Role</label>
-              <select
-                value={loginEmail}
-                onChange={(e) => setLoginEmail(e.target.value)}
-                style={{ width: '100%', padding: '10px 12px', marginTop: '6px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px', background: '#f8fafc' }}
-              >
-                <option value="admin@servicesphere.com">System Administrator</option>
-                <option value="employee@servicesphere.com">Employee / Requester</option>
-                <option value="agent@servicesphere.com">Support Agent</option>
-                <option value="manager@servicesphere.com">Support Lead / Manager</option>
-                <option value="assetmgr@servicesphere.com">IT Asset Manager</option>
-              </select>
-            </div>
-            <div>
-              <label style={{ fontSize: '13px', fontWeight: '600', color: '#334155' }}>Password</label>
-              <input
-                type="password"
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-                required
-                style={{ width: '100%', padding: '10px 12px', marginTop: '6px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px', boxSizing: 'border-box', background: '#f8fafc' }}
-              />
-            </div>
-            <button type="submit" style={{ background: '#2563eb', color: 'white', padding: '12px', border: 'none', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', marginTop: '8px', fontSize: '14px' }}>
-              Sign In to ServiceSphere
-            </button>
-          </form>
-        </div>
-      </div>
+      <AuthScreen
+        onAuthenticated={(loggedInUser) => {
+          setUser(loggedInUser);
+        }}
+      />
     );
   }
 
   return (
     <div style={{ padding: '32px', fontFamily: 'Inter, system-ui, sans-serif', maxWidth: '1200px', margin: '0 auto', background: '#f8fafc', minHeight: '100vh' }}>
-      <Navbar user={user} onLogout={() => setUser(null)} />
+      <Navbar user={user} onLogout={handleLogout} />
 
       {/* Live Metric Cards driven by Report Service */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
@@ -337,7 +284,7 @@ function App() {
                     <p style={{ margin: '6px 0 12px 0', color: '#64748b', fontSize: '13px', lineHeight: '1.4' }}>{t.description}</p>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid #f1f5f9', fontSize: '12px', color: '#64748b' }}>
                       <span>Agent: <strong style={{ color: '#334155' }}>{t.assignedAgentName || 'Unassigned'}</strong></span>
-                      <span style={{ color: '#2563eb', fontWeight: '600' }}>View Details &rarr;</span>
+                      <span style={{ color: '#2563eb', fontWeight: '600' }}>View Details →</span>
                     </div>
                   </div>
                 ))}

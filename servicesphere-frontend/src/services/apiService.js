@@ -1,6 +1,6 @@
 // src/services/apiService.js
 
-const BASE_URL = 'http://localhost:8080/api'; // Update port if your Spring Boot runs elsewhere
+const BASE_URL = 'http://localhost:8080/api';
 
 /**
  * Helper to build URL query strings for search, filters, and pagination.

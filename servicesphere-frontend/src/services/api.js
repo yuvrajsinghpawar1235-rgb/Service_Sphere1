@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Hardcoded to ensure the /api prefix is never omitted by environment variables
-const API_BASE_URL = 'https://servicesphere-rjrp.onrender.com/api';
+const API_BASE_URL = 'https://service-sphere1.onrender.com/api';
 
 const handleRequest = async (apiCall) => {
     try {
@@ -15,6 +15,10 @@ const handleRequest = async (apiCall) => {
 
 // --- Authentication ---
 export const loginUser = (credentials) => handleRequest(() => axios.post(`${API_BASE_URL}/login`, credentials));
+export const registerUser = (userData) => handleRequest(() => axios.post(`${API_BASE_URL}/register`, userData));
+export const logoutUser = () => handleRequest(() => axios.post(`${API_BASE_URL}/logout`));
+export const getCurrentUser = (email) => handleRequest(() => axios.get(`${API_BASE_URL}/auth/me`, { params: { email } }));
+export const getDepartments = () => handleRequest(() => axios.get(`${API_BASE_URL}/departments`));
 
 // --- Tickets ---
 export const getTickets = (params) => handleRequest(() => axios.get(`${API_BASE_URL}/tickets`, { params }));
