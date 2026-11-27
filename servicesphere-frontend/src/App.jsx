@@ -29,6 +29,7 @@ function App() {
   const [assets, setAssets] = useState([]);
   const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [errorBanner, setErrorBanner] = useState('');
 
   // Live Report Metrics State
   const [ticketSummary, setTicketSummary] = useState({ totalTickets: 0, openTickets: 0, resolvedTickets: 0 });
@@ -43,6 +44,7 @@ function App() {
 
   useEffect(() => {
     if (user) {
+      setErrorBanner('');
       loadData();
     }
   }, [user]);
@@ -50,9 +52,9 @@ function App() {
   const loadData = async () => {
     try {
       const [ticketData, assetData, articleData, tSummary, sMetrics, aSummary] = await Promise.all([
-        getTickets().catch(() => []),
+        getTickets({ userId: user?.id, role: user?.role }).catch(() => []),
         getAssets().catch(() => []),
-        getKnowledgeArticles().catch(() => []),
+        getKnowledgeArticles({ roleId: user?.roleId ?? 1 }).catch(() => []),
         reportService.getTicketSummary().catch(() => ({ totalTickets: 0, openTickets: 0, resolvedTickets: 0 })),
         reportService.getSlaMetrics().catch(() => ({ complianceRate: '100%', breachedCount: 0 })),
         reportService.getAssetSummary().catch(() => ({ totalAssets: 0, assignedAssets: 0, availableAssets: 0 }))
@@ -66,6 +68,7 @@ function App() {
       setAssetSummary(aSummary);
     } catch (err) {
       console.error("Error fetching data:", err);
+      setErrorBanner(err.message || "Error fetching dashboard data.");
     }
   };
 
@@ -85,6 +88,7 @@ function App() {
   const handleTicketSubmit = async (e) => {
     e.preventDefault();
     if (!ticketForm.title || !ticketForm.description) return;
+    setErrorBanner('');
     try {
       setLoading(true);
       await createTicket({ ...ticketForm, requesterId: user?.id || 1 }, user?.roleId || 1);
@@ -92,12 +96,14 @@ function App() {
       await loadData();
     } catch (err) {
       console.error("Failed to submit ticket:", err);
+      setErrorBanner(err.message || "Failed to submit ticket.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleStatusChange = async (id, newStatus) => {
+    setErrorBanner('');
     try {
       await updateTicketStatus(id, newStatus, user?.roleId);
       await loadData();
@@ -106,10 +112,12 @@ function App() {
       }
     } catch (err) {
       console.error("Failed to update status:", err);
+      setErrorBanner(err.message || "Failed to update status.");
     }
   };
 
   const handlePriorityChange = async (id, newPriority) => {
+    setErrorBanner('');
     try {
       await updateTicketPriority(id, newPriority, user?.roleId);
       await loadData();
@@ -118,10 +126,12 @@ function App() {
       }
     } catch (err) {
       console.error("Failed to update priority:", err);
+      setErrorBanner(err.message || "Failed to update priority.");
     }
   };
 
   const handleAgentAssign = async (id, agentName) => {
+    setErrorBanner('');
     try {
       await assignTicketAgent(id, agentName, user?.roleId);
       await loadData();
@@ -130,12 +140,14 @@ function App() {
       }
     } catch (err) {
       console.error("Failed to assign agent:", err);
+      setErrorBanner(err.message || "Failed to assign agent.");
     }
   };
 
   const handleAssetSubmit = async (e) => {
     e.preventDefault();
     if (!assetForm.assetTag || !assetForm.brand) return;
+    setErrorBanner('');
     try {
       setLoading(true);
       await createAsset({ ...assetForm, serialNumber: assetForm.assetTag + '-SN' }, user?.roleId);
@@ -143,17 +155,20 @@ function App() {
       await loadData();
     } catch (err) {
       console.error("Failed to register asset:", err);
+      setErrorBanner(err.message || "Failed to register asset.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleAssetStatusChange = async (id, newStatus) => {
+    setErrorBanner('');
     try {
       await updateAssetStatus(id, newStatus);
       await loadData();
     } catch (err) {
       console.error("Failed to update asset status:", err);
+      setErrorBanner(err.message || "Failed to update asset status.");
     }
   };
 
@@ -161,6 +176,7 @@ function App() {
     setUser(null);
     setSelectedTicket(null);
     setActiveTab('tickets');
+    setErrorBanner('');
   };
 
   if (!user) {
@@ -176,6 +192,35 @@ function App() {
   return (
     <div style={{ padding: '32px', fontFamily: 'Inter, system-ui, sans-serif', maxWidth: '1200px', margin: '0 auto', background: '#f8fafc', minHeight: '100vh' }}>
       <Navbar user={user} onLogout={handleLogout} />
+
+      {errorBanner && (
+        <div
+          role="alert"
+          style={{
+            marginBottom: '20px',
+            padding: '12px 16px',
+            borderRadius: '10px',
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            color: '#b91c1c',
+            fontSize: '13px',
+            fontWeight: '600',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '12px'
+          }}
+        >
+          <span>{errorBanner}</span>
+          <button
+            type="button"
+            onClick={() => setErrorBanner('')}
+            style={{ background: 'none', border: 'none', color: '#b91c1c', fontWeight: '700', cursor: 'pointer', fontSize: '15px' }}
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Live Metric Cards driven by Report Service */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
@@ -306,7 +351,11 @@ function App() {
       )}
 
       {activeTab === 'knowledge' && (
-        <KnowledgeBaseTab articles={safeArticles} />
+        <KnowledgeBaseTab
+          articles={safeArticles}
+          user={user}
+          onArticleCreated={loadData}
+        />
       )}
 
       {selectedTicket && (
