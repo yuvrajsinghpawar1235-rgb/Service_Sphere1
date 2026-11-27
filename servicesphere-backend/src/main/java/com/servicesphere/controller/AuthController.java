@@ -1,6 +1,8 @@
 package com.servicesphere.controller;
 
+import com.servicesphere.dto.RegisterRequest;
 import com.servicesphere.entity.User;
+import com.servicesphere.repository.DepartmentRepository;
 import com.servicesphere.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -10,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -19,6 +22,9 @@ public class AuthController {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private DepartmentRepository departmentRepository;
 
     private String hashPassword(String password) {
         try {
@@ -32,8 +38,19 @@ public class AuthController {
             }
             return hexString.toString();
         } catch (NoSuchAlgorithmException e) {
-            return password;
+            throw new IllegalStateException("SHA-256 algorithm unavailable", e);
         }
+    }
+
+    private String resolveRoleName(Long roleId) {
+        if (roleId == null) return "EMPLOYEE";
+        return switch (roleId.intValue()) {
+            case 2 -> "SUPPORT AGENT";
+            case 3 -> "SUPPORT LEAD / MANAGER";
+            case 4 -> "IT ASSET MANAGER";
+            case 5 -> "ADMINISTRATOR";
+            default -> "EMPLOYEE";
+        };
     }
 
     @PostMapping("/login")
@@ -41,12 +58,17 @@ public class AuthController {
         String email = credentials.get("email");
         String rawPassword = credentials.get("password");
 
-        if (email == null || rawPassword == null) {
+        if (email == null || email.trim().isEmpty() || rawPassword == null) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("error", "Email and password are required"));
         }
 
-        Optional<User> userOpt = userRepository.findByEmail(email);
+        String normalizedEmail = email.trim().toLowerCase();
+        Optional<User> userOpt = userRepository.findByEmail(normalizedEmail);
+        if (userOpt.isEmpty()) {
+            userOpt = userRepository.findByEmail(email.trim());
+        }
+
         if (userOpt.isEmpty()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("error", "Invalid email or password"));
@@ -64,49 +86,81 @@ public class AuthController {
                     .body(Map.of("error", "Invalid credentials"));
         }
 
-        String roleName = "EMPLOYEE";
-        if (user.getRoleId() != null) {
-            if (user.getRoleId() == 2) roleName = "SUPPORT AGENT";
-            else if (user.getRoleId() == 3) roleName = "SUPPORT LEAD / MANAGER";
-            else if (user.getRoleId() == 4) roleName = "IT ASSET MANAGER";
-            else if (user.getRoleId() == 5) roleName = "ADMINISTRATOR";
-        }
-
         return ResponseEntity.ok(Map.of(
                 "id", user.getId(),
                 "fullName", user.getFullName(),
                 "email", user.getEmail(),
-                "role", roleName,
+                "role", resolveRoleName(user.getRoleId()),
                 "roleId", user.getRoleId()
         ));
     }
 
     @PostMapping("/register")
-    public ResponseEntity<?> registerUser(@RequestBody User newUser) {
-        if (newUser.getEmail() == null || newUser.getEmail().trim().isEmpty()) {
+    public ResponseEntity<?> registerUser(@RequestBody RegisterRequest request) {
+        if (request == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", "Registration request is required"));
+        }
+
+        String fullName = request.normalizedFullName();
+        String email = request.normalizedEmail();
+        String rawPassword = request.effectivePassword();
+
+        if (email.isEmpty()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("error", "Email is required"));
         }
 
-        if (userRepository.findByEmail(newUser.getEmail()).isPresent()) {
+        if (!email.contains("@")) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", "A valid email address is required"));
+        }
+
+        if (fullName.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", "Full name is required"));
+        }
+
+        if (userRepository.findByEmail(email).isPresent()) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("error", "Email is already registered"));
         }
 
+        if (request.departmentId() != null && departmentRepository.findById(request.departmentId()).isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", "Selected department does not exist"));
+        }
+
+        User newUser = new User();
+        newUser.setFullName(fullName);
+        newUser.setEmail(email);
         newUser.setRoleId(1L);
         newUser.setStatus("ACTIVE");
 
-        if (newUser.getPasswordHash() != null && !newUser.getPasswordHash().trim().isEmpty()) {
-            newUser.setPasswordHash(hashPassword(newUser.getPasswordHash()));
+        if (request.departmentId() != null) {
+            newUser.setDepartmentId(request.departmentId());
+        }
+
+        if (rawPassword != null && !rawPassword.trim().isEmpty()) {
+            newUser.setPasswordHash(hashPassword(rawPassword.trim()));
         } else {
             newUser.setPasswordHash(hashPassword("pass123"));
         }
 
         User savedUser = userRepository.save(newUser);
-        return ResponseEntity.ok(Map.of(
-                "message", "Registration successful. Safe default Employee role assigned.",
-                "email", savedUser.getEmail()
-        ));
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("message", "Registration successful. Safe default Employee role assigned.");
+        response.put("id", savedUser.getId());
+        response.put("fullName", savedUser.getFullName());
+        response.put("email", savedUser.getEmail());
+        response.put("role", resolveRoleName(savedUser.getRoleId()));
+        response.put("roleId", savedUser.getRoleId());
+        if (savedUser.getDepartmentId() != null) {
+            response.put("departmentId", savedUser.getDepartmentId());
+        }
+
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/logout")
@@ -116,26 +170,21 @@ public class AuthController {
 
     @GetMapping("/auth/me")
     public ResponseEntity<?> getCurrentUser(@RequestParam String email) {
-        Optional<User> userOpt = userRepository.findByEmail(email);
+        Optional<User> userOpt = userRepository.findByEmail(email.trim().toLowerCase());
+        if (userOpt.isEmpty()) {
+            userOpt = userRepository.findByEmail(email.trim());
+        }
         if (userOpt.isEmpty()) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("error", "Session expired or invalid"));
         }
         User user = userOpt.get();
 
-        String roleName = "EMPLOYEE";
-        if (user.getRoleId() != null) {
-            if (user.getRoleId() == 2) roleName = "SUPPORT AGENT";
-            else if (user.getRoleId() == 3) roleName = "SUPPORT LEAD / MANAGER";
-            else if (user.getRoleId() == 4) roleName = "IT ASSET MANAGER";
-            else if (user.getRoleId() == 5) roleName = "ADMINISTRATOR";
-        }
-
         return ResponseEntity.ok(Map.of(
                 "id", user.getId(),
                 "fullName", user.getFullName(),
                 "email", user.getEmail(),
-                "role", roleName,
+                "role", resolveRoleName(user.getRoleId()),
                 "roleId", user.getRoleId()
         ));
     }
